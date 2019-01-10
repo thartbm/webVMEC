@@ -1,0 +1,279 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="developer" content="Jungho Ryu" />
+    <meta name="supervisor" content="Bernard Marius 't Hart" />
+    <meta name="institution" content="Sensorimotor Control Lab @ York University, Toronto, ON, CANADA" />
+    <title>VMEC Experimental Psychology Game Loader</title>
+    <script type="text/javascript" src="3trialTest.json"></script>
+    <script type="text/javascript" src="JSONextractor.js"></script>
+    <style>
+      html, body, canvas { margin:0; padding:0; border:0 none; }
+      canvas { background:Black; display: block; }
+    </style>
+</head>
+<body>
+
+<canvas id="myCanvas"></canvas>
+
+<script>
+    var canvas = document.getElementById("myCanvas");
+    var ctx, x, y;
+    var horScale, verScale, nsUnit, centreX, centreY;
+
+    function canvasCalculation(){
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      document.getElementsByTagName("body")[0].appendChild(canvas);
+
+      ctx = canvas.getContext("2d");
+      x = canvas.width/2;
+      y = canvas.height-30;
+
+      horScale = canvas.width * (2/3);
+      verScale = canvas.height * (2/3);
+      nsUnit = 1;
+      if ( verScale * 2 < horScale ){
+        horScale = verScale * 2
+        nsUnit = verScale;
+      } else {
+        verScale = horScale / 2;
+        nsUnit = horScale / 2;
+      }
+
+      centreX = canvas.width / 2;
+      centreY = canvas.height - ((canvas.height - nsUnit) / 2);
+    }
+
+    var elem = document.documentElement;
+
+    function openFullscreen() {
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+      } else if (elem.mozRequestFullScreen) { /* Firefox */
+        elem.mozRequestFullScreen();
+      } else if (elem.webkitRequestFullscreen) { /* Chrome, Safari and Opera */
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) { /* IE/Edge */
+        elem.msRequestFullscreen();
+      }
+    }
+
+    function closeFullscreen() {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.mozCancelFullScreen) { /* Firefox */
+        document.mozCancelFullScreen();
+      } else if (document.webkitExitFullscreen) { /* Chrome, Safari and Opera */
+        document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) { /* IE/Edge */
+        document.msExitFullscreen();
+      }
+    }
+
+    var nRounds, currentRound, epsilon;
+    var mouse_x = [];
+    var mouse_y = [];
+    var targetArray = [];
+
+    function CollisionObject(isCursor, sizeFactor){
+      this.isCursor = isCursor;
+      this.isVisible = true;
+      this.x = 0;
+      this.y = 0;
+      this.untouched = false;
+      this.size = nsUnit * sizeFactor;
+    }
+
+    var Cursor, Centre = {};
+    var record_time = [];
+    var round_time = [];
+    var prevTime = performance.now();
+    var collisionCount;
+
+    function initCursorSettings(so, eo){
+      Cursor = new CollisionObject(true, so.cursor_size);
+      Centre = new CollisionObject(false, so.cursor_size);
+      Centre.x = centreX;
+      Centre.y = centreY;
+
+      epsilon = so.cursor_size * nsUnit;
+      targetArray.length = 0; // clear targets from previous round of experiments
+      for(var i = 0; i < eo.num_targets; i++){
+        var Target = new CollisionObject(false, so.cursor_size);
+        targetArray.push(Target);
+      }
+      targetArray[0].untouched = true;
+      nRounds = eo.num_trials;
+      currentRound = 1;
+      collisionCount = 0;
+    }
+
+    var spacePressed;
+    var timer;
+    var message;
+    function initPauseSettings(so, eo){
+      spacePressed = false;
+      timer = eo.pausetime;
+      message = eo.pause_instruction;
+    }
+
+    function targetLocationGenerator(eo) {
+      var rangePercentage = ( eo.max_angle - eo.min_angle ) / 180;
+      var angle = Math.PI + ( (rangePercentage * Math.random() + (eo.min_angle / 180)) * Math.PI );
+      var coordx = eo.target_distance_ratio * nsUnit * Math.cos( angle ) + centreX;
+      var coordy = eo.target_distance_ratio * nsUnit * Math.sin( angle ) + centreY;
+      return [coordx, coordy];
+    }
+
+    function setTargetLocation(eo){
+      for(var i = 0; i < targetArray.length; i++){
+        var xy = targetLocationGenerator(eo);
+        targetArray[i].x = xy[0];
+        targetArray[i].y = xy[1];
+      }
+    }
+
+    function recordMousePosition(px, py) {
+      mouse_x.push(px);
+      mouse_y.push(py);
+      var currTime = performance.now();
+      var dt = Math.floor(currTime - prevTime);
+      prevTime = currTime;
+      record_time.push(dt);
+    }
+
+    function keySpaceHandler(e) {
+      if(e.keyCode == 32) {
+        spacePressed = true;
+      }
+    }
+
+    function mouseMoveHandler(e) {
+        recordMousePosition(e.clientX, e.clientY);
+        Cursor.x = e.clientX;
+        Cursor.y = e.clientY;
+    }
+
+    function collisionHandler(obj) {
+        if( obj.untouched ){
+          if ( Math.abs( e.clientX - obj.x ) < epsilon && Math.abs( e.clientY - obj.y ) < epsilon ) {
+            obj.untouched = false;
+            collisionCount++;
+          }
+        }
+    }
+
+    function drawCircle(obj) {
+      ctx.beginPath();
+      ctx.arc(obj.x, obj.y, obj.size/2, 0, Math.PI*2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.closePath();
+    }
+
+    function drawCursor(obj) {
+      ctx.beginPath();
+      ctx.arc(mouse_x[mouse_x.length -1], mouse_y[mouse_y.length -1], obj.size/2, 0, Math.PI*2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.closePath();
+    }
+
+    function drawRound() {
+        ctx.font = "16px Arial";
+        ctx.fillStyle = "#0095DD";
+        ctx.fillText("Round: "+currentRound, canvas.width-120, 20);
+    }
+    function drawMouseLocation(){
+        ctx.font = "16px Arial";
+        ctx.fillStype = "#ffffff";
+        var mouseLocStr = "x: " + mouse_x[mouse_x.length-1] + "  y: " + mouse_y[mouse_y.length-1] + "  t: " + record_time[record_time.length-1];
+        ctx.fillText(mouseLocStr, canvas.width/2,20);
+    }
+
+    var halt = false;
+    var inProgress = true;
+
+    function setupScreen(so){
+      if(so.fullscreen){
+        openFullscreen();
+      }
+      if(so.flipscreen){
+        //TODO setup flipscreen
+      }
+    }
+
+    var once;
+    function setupManager() {
+        canvasCalculation();
+        roundManager(experiment_spec_array[0], inProgress);
+        if (SettingObject.trial_type == "pause"){
+          initPauseSettings(SettingObject);
+        } else {
+          initCursorSettings(SettingObject,experiment_spec_array[0]);
+          setTargetLocation(experiment_spec_array[0]);
+        }
+    }
+
+    function roundManager(eo, inProgress){
+      if (inProgress) return;
+      if (typeof currentRound == 'undefined'){
+        currentRound = 1;
+      } else {
+        Centre.untouched = false;
+        targetArray[0].untouched = true;
+        currentRound++;
+      }
+      collisionCount = 0;
+    }
+
+    var fps = 60;
+
+    function exitSequence(so){
+      if(so.fullscreen){
+        closeFullscreen();
+      }
+      if(so.flipscreen){
+        //TODO;
+      }
+    }
+
+    function draw() {
+        setTimeout(function () {
+          setupManager();
+          document.addEventListener("keydown", keySpaceHandler, false);
+          document.addEventListener("mousemove", mouseMoveHandler, false);
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          drawCircle(targetArray[0]);
+          drawCircle(targetArray[1]);
+          drawCursor(Cursor);
+          drawCircle(Centre);
+          drawMouseLocation();
+          drawRound();
+          var obj;
+          if (collisionCount = 0){
+            obj = targetArray[0];
+          } else {
+            obj = Centre;
+          }
+          collisionHandler(obj);
+          if(currentRound > nRounds){
+            halt = true;
+          }
+          if (halt){
+            //exitSequence(so);
+            return;
+          }
+          requestAnimationFrame(draw);
+        }, 1000/fps);
+    }
+
+    draw();
+</script>
+
+</body>
+</html>
