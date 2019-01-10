@@ -79,6 +79,7 @@
     var targetArray = [];
 
     function CollisionObject(isCursor, sizeFactor){
+      this.state = 'waiting';
       this.isCursor = isCursor;
       this.isVisible = true;
       this.x = 0;
@@ -105,7 +106,6 @@
         var Target = new CollisionObject(false, so.cursor_size);
         targetArray.push(Target);
       }
-      targetArray[0].untouched = true;
       nRounds = eo.num_trials;
       currentRound = 1;
       collisionCount = 0;
@@ -120,25 +120,73 @@
       message = eo.pause_instruction;
     }
 
-    function targetLocationGenerator(eo) {
-      var rangePercentage = ( eo.max_angle - eo.min_angle ) / 180;
-      var angle = Math.PI + ( (rangePercentage * Math.random() + (eo.min_angle / 180)) * Math.PI );
-      var coordx = eo.target_distance_ratio * nsUnit * Math.cos( angle ) + centreX;
-      var coordy = eo.target_distance_ratio * nsUnit * Math.sin( angle ) + centreY;
-      return [coordx, coordy];
+    // Generates a random pair of coordinates on the perimeter of a unit circle
+    // within the given range of angles.
+
+    // function targetLocationGenerator(eo) {
+    //   var rangePercentage = ( eo.max_angle - eo.min_angle ) / 180;
+    //   var angle = Math.PI + ( (rangePercentage * Math.random() + (eo.min_angle / 180)) * Math.PI );
+    //   var coordx = eo.target_distance_ratio * nsUnit * Math.cos( angle ) + centreX;
+    //   var coordy = eo.target_distance_ratio * nsUnit * Math.sin( angle ) + centreY;
+    //   return [coordx, coordy];
+    // }
+
+    function targetLocationGenerator(eo){
+      var spacing = 0;
+      if (eo.num_targets > 1) {
+        spacing = (eo.max_angle - eo.min_angle) / (eo.num_targets - 1);
+      }
+      var returnValues = [];
+      for(var i = 0; i < eo.num_targets; i++){
+        var angle = Math.PI + ((eo.min_angle + (spacing * i)) / 180) * Math.PI;
+        var coordx = eo.target_distance_ratio * nsUnit * Math.cos( angle ) + centreX;
+        var coordy = eo.target_distance_ratio * nsUnit * Math.sin( angle ) + centreY;
+        returnValues.push([coordx, coordy]);
+      }
+      return returnValues;
     }
 
     function setTargetLocation(eo){
       for(var i = 0; i < targetArray.length; i++){
         var xy = targetLocationGenerator(eo);
-        targetArray[i].x = xy[0];
-        targetArray[i].y = xy[1];
+        targetArray[i].x = xy[i][0];
+        targetArray[i].y = xy[i][1];
       }
+    }
+
+    function shuffleArray(arr){ //Fisher-Yates algorithm
+      var i, j, temp;
+      for (i = arr.length - 1; i > 0; i--) {
+        j  = Math.floor(Math.random() * (i+1));
+        temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
+      }
+      return arr;
+    }
+
+    function updateTargetStatus(i) {
+      if(targetArray[i].status == 'ready'){
+        targetArray[i].status = 'active';
+        return i;
+      } else if (targetArray[i].status == 'active'){
+        targetArray[i].status = 'done';
+        if(i >= targetArray.length-1){
+          return -1;
+        } else {
+          targetArray[i+1].status = 'ready';
+          return i+1;
+        }
+      }
+      return i;
     }
 
     function recordMousePosition(px, py) {
       mouse_x.push(px);
       mouse_y.push(py);
+    }
+
+    function recordTime(){
       var currTime = performance.now();
       var dt = Math.floor(currTime - prevTime);
       prevTime = currTime;
@@ -169,9 +217,9 @@
     function drawCircle(obj) {
       ctx.beginPath();
       ctx.arc(obj.x, obj.y, obj.size/2, 0, Math.PI*2);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-      ctx.closePath();
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      //ctx.closePath();
     }
 
     function drawCursor(obj) {
@@ -248,11 +296,13 @@
           document.addEventListener("mousemove", mouseMoveHandler, false);
 
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          drawCircle(targetArray[0]);
-          drawCircle(targetArray[1]);
+          for(var i = 0; i < targetArray.length; i++){
+            drawCircle(targetArray[i]);
+          }
           drawCursor(Cursor);
           drawCircle(Centre);
           drawMouseLocation();
+          recordTime();
           drawRound();
           var obj;
           if (collisionCount = 0){
